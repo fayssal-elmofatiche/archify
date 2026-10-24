@@ -49,6 +49,9 @@
         "quality_profile": {
           "$ref": "common.schema.json#/$defs/qualityProfile"
         },
+        "output_profile": {
+          "$ref": "common.schema.json#/$defs/outputProfile"
+        },
         "repository": {
           "$ref": "common.schema.json#/$defs/repository"
         },

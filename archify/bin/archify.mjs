@@ -2701,6 +2701,7 @@ const COMPOSITION_CHECKS = new Set([
   'relationship_corridors',
   'container_border_runs',
   'route_rhythm',
+  'output_final_type',
 ]);
 
 const CHECK_FIXES = {

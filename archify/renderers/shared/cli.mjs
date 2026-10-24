@@ -21,6 +21,7 @@ import {
 } from './atomic-output.mjs';
 import { resolveLocale, translateMessage, registerLocale, localeDiagnostics } from './i18n.mjs';
 import { prepareDiagramBrandMarks } from './brand-marks.mjs';
+import { outputProfileAttrs } from './output-profile.mjs';
 
 const outputPathGuards = new Map();
 let renderCandidateSequence = 0;
@@ -389,7 +390,7 @@ export function svgRootAttrs(meta, explicitQualityProfile) {
   const requestedProfile = explicitQualityProfile || process.env.ARCHIFY_QUALITY_PROFILE || meta.quality_profile;
   const qualityProfile = requestedProfile === 'showcase' ? 'showcase' : 'standard';
   const advisory = requestedProfile ? '' : ' data-quality-gates="advisory"';
-  return `role="img" lang="${esc(resolveLocale(meta.locale))}" aria-labelledby="archify-diagram-title archify-diagram-description"${animation}${preset}${engineeringProfile}${parentHref} data-quality-profile="${esc(qualityProfile)}"${advisory}`;
+  return `role="img" lang="${esc(resolveLocale(meta.locale))}" aria-labelledby="archify-diagram-title archify-diagram-description"${animation}${preset}${engineeringProfile}${parentHref} data-quality-profile="${esc(qualityProfile)}"${advisory}${outputProfileAttrs(meta)}`;
 }
 
 // Keep the accessible name inside the SVG so it survives standalone SVG

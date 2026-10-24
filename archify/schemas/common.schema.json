@@ -27,6 +27,27 @@
     "qualityProfile": {
       "enum": ["standard", "showcase"]
     },
+    "outputProfile": {
+      "description": "Where the diagram is read outside the Viewer. Renderers set type for this medium and the artifact checker proves every drawn text reaches the medium's floor at final size.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["medium"],
+          "properties": { "medium": { "const": "slide" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["medium"],
+          "properties": {
+            "medium": { "const": "print" },
+            "column_mm": { "type": "number", "minimum": 60, "maximum": 300 },
+            "max_height_mm": { "type": "number", "minimum": 40, "maximum": 400 }
+          }
+        }
+      ]
+    },
     "portableOutputPath": {
       "description": "A portable POSIX-relative HTML output path. It must be safe to interpret identically on every supported host filesystem.",
       "type": "string",

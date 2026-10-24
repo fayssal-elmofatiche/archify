@@ -22,6 +22,7 @@
         "visual_preset": { "$ref": "common.schema.json#/$defs/visualPreset" },
         "quality_profile": { "$ref": "common.schema.json#/$defs/qualityProfile" },
         "parentHref": { "$ref": "common.schema.json#/$defs/parentHref" },
+        "output_profile": { "$ref": "common.schema.json#/$defs/outputProfile" },
         "engineering_profile": { "enum": ["deployment-ownership"] },
         "repository": { "$ref": "common.schema.json#/$defs/repository" },
         "views": { "$ref": "common.schema.json#/$defs/guidedViews" },

@@ -17,6 +17,7 @@ import {
   predictedFixedWidthOverflow,
   projectedNodeTextPx,
 } from '../renderers/shared/desktop-readability.mjs';
+import { outputProfileFromAttrs, outputScale } from '../renderers/shared/output-profile.mjs';
 
 const input = process.argv[2];
 const DEFAULT_MAX_CROSSING_PAIR_CHECKS = 50_000;
@@ -396,6 +397,8 @@ if (svgBlocks.length === 1) {
   const beforeLegend = legendStart >= 0 ? svg.slice(0, legendStart) : svg;
   const desktopReadability = collectDesktopReadability(svgAttrs, beforeLegend, readerContract);
   const desktopReadabilityIssue = desktopReadability.issue;
+  const outputFinalType = collectOutputFinalType(svgAttrs, svg, legendStart);
+  const outputFinalTypeIssues = outputFinalType?.issues || [];
   // The browser gate measures this later; the geometry is already certain here.
   const viewportHeightIssue = predictedFixedWidthOverflow({
     viewBoxWidth: viewBoxSize(svgAttrs)[0],
@@ -485,6 +488,8 @@ if (svgBlocks.length === 1) {
   const labelClearanceIsError = qualityProfile === 'showcase';
   const labelContainmentIsError = qualityProfile === 'showcase';
   const desktopReadabilityIsError = qualityProfile === 'showcase';
+  // New and provisional: evidence first in both profiles (CONTRIBUTING.md#product-and-compatibility-contracts).
+  const outputFinalTypeIsError = false;
   // Certain geometry, but new: surface it as evidence first (CONTRIBUTING.md#product-and-compatibility-contracts).
   const viewportHeightIsError = false;
   const compositionErrors = (crossingAnalysis.exhausted ? 1 : 0)
@@ -495,6 +500,7 @@ if (svgBlocks.length === 1) {
     + (labelContainmentIsError ? labelCanvasOverflow.length : 0)
     + (rhythmIsError ? routeRhythmIssues.length : 0)
     + (desktopReadabilityIsError && desktopReadabilityIssue ? 1 : 0)
+    + (outputFinalTypeIsError ? outputFinalTypeIssues.length : 0)
     + (viewportHeightIsError && viewportHeightIssue ? 1 : 0);
   const compositionWarnings = (qualityGatesEnforced ? 0 : containerBorderRuns.length)
     + (crossingIsError ? 0 : relationshipCrossings.length)
@@ -503,6 +509,7 @@ if (svgBlocks.length === 1) {
     + (labelContainmentIsError ? 0 : labelCanvasOverflow.length)
     + (rhythmIsError ? 0 : routeRhythmIssues.length)
     + (desktopReadabilityIsError || !desktopReadabilityIssue ? 0 : 1)
+    + (outputFinalTypeIsError ? 0 : outputFinalTypeIssues.length)
     + (viewportHeightIsError || !viewportHeightIssue ? 0 : 1);
   composition = {
     schemaVersion: 1,
@@ -524,6 +531,7 @@ if (svgBlocks.length === 1) {
       desktopReadabilityIssues: desktopReadabilityIssue ? 1 : 0,
       viewportHeightIssues: viewportHeightIssue ? 1 : 0,
       minProjectedNodeTextPx: desktopReadability.evidence.minimumProjectedTextPx,
+      ...(outputFinalType ? { outputFinalTypeIssues: outputFinalTypeIssues.length } : {}),
       ...roundedRouteMetrics(routeMetrics),
     },
     suggestedLimits: { bendsPerRelationship: 2, stretch: 1.35, segmentPx: 16, microSegmentPx: 8 },
@@ -556,6 +564,7 @@ if (svgBlocks.length === 1) {
     ...(sequenceColumnSpace ? { sequenceColumnSpace } : {}),
     ...(sequenceNoteBorders.length ? { sequenceNoteBorders } : {}),
     desktopReadability: desktopReadability.evidence,
+    ...(outputFinalType ? { outputFinalType: outputFinalType.evidence } : {}),
     issues: [
       ...containerBorderRuns.map((hit) => ({
         severity: qualityGatesEnforced ? 'error' : 'warning',
@@ -665,6 +674,23 @@ if (svgBlocks.length === 1) {
         projectedFontPx: desktopReadabilityIssue.projectedFontPx,
         minimumProjectedFontPx: MIN_PROJECTED_NODE_TEXT_PX,
       }] : []),
+      ...outputFinalTypeIssues.map((hit) => ({
+        severity: outputFinalTypeIsError ? 'error' : 'warning',
+        code: 'output/final-type-below-floor',
+        ...(hit.owner.kind === 'node' && hit.owner.id ? { nodeId: hit.owner.id } : {}),
+        owner: hit.owner,
+        text: hit.text,
+        role: hit.role,
+        sourceFontPx: hit.sourceFontPx,
+        finalSize: hit.finalSize,
+        floor: hit.floor,
+        unit: outputFinalType.evidence.unit,
+        medium: outputFinalType.evidence.medium,
+        scale: outputFinalType.evidence.scale,
+        maxScale: outputFinalType.evidence.maxScale,
+        frame: outputFinalType.evidence.frame,
+        viewBox: outputFinalType.evidence.viewBox,
+      })),
       ...(viewportHeightIssue ? [{
         severity: viewportHeightIsError ? 'error' : 'warning',
         code: 'composition/viewport-height',
@@ -676,6 +702,15 @@ if (svgBlocks.length === 1) {
       }] : []),
     ],
   };
+  if (outputFinalType) {
+    addCheck(
+      'output_final_type',
+      !outputFinalTypeIsError || outputFinalTypeIssues.length === 0,
+      outputFinalTypeIssues.map((hit) => (
+        `[output/final-type-below-floor] ${outputFinalType.evidence.medium} ${hit.role} text "${hit.text}" (${hit.owner.kind}${hit.owner.id ? ` ${hit.owner.id}` : ''}) is ${hit.sourceFontPx}px in the source and ${hit.finalSize}${outputFinalType.evidence.unit} at final size (scale ${outputFinalType.evidence.scale}); the floor is ${hit.floor}${outputFinalType.evidence.unit}.`
+      )),
+    );
+  }
   addCheck(
     'label_route_clearance',
     !labelClearanceIsError || labelRouteClearance.length === 0,
@@ -1634,6 +1669,73 @@ function collectDesktopReadability(svgAttrs, fragment, contract) {
     semanticTextCount: entries.length,
   };
   return { evidence, issue: worst && hardFloorMet === false ? worst : null };
+}
+
+// Output profiles (renderers/shared/output-profile.mjs): every drawn text,
+// fine detail and legend included, projected to the medium's final size. A
+// slide or page has no semantic zoom, so nothing drawn is exempt.
+function collectOutputFinalType(svgAttrs, svg, legendStart = -1) {
+  const profile = outputProfileFromAttrs(svgAttrs);
+  if (!profile) return null;
+  const [viewBoxWidth, viewBoxHeight] = viewBoxSize(svgAttrs);
+  const scale = outputScale(profile, viewBoxWidth, viewBoxHeight);
+  const round = (value) => Math.round(value * 100) / 100;
+  const entries = [];
+  const groups = [];
+  let skip = 0;
+  for (const match of svg.matchAll(/<!--[\s\S]*?(?:-->|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|<text\b([^>]*)>([\s\S]*?)<\/text>|<(defs|symbol|marker|pattern|mask|clipPath)\b[^>]*?(\/?)>|<\/(defs|symbol|marker|pattern|mask|clipPath)\s*>|<g\b[^>]*>|<\/g\s*>/gi)) {
+    if (match[0].startsWith('<!')) continue;
+    if (match[3]) { if (!match[4]) skip += 1; continue; }
+    if (match[5]) { skip = Math.max(0, skip - 1); continue; }
+    if (match[1] === undefined) {
+      if (/^<\/g/i.test(match[0])) groups.pop();
+      else if (!/\/\s*>$/.test(match[0])) groups.push(parseAttrs(match[0]));
+      continue;
+    }
+    if (skip) continue;
+    const attrs = parseAttrs(match[1]);
+    const primary = hasAttribute(match[1], 'data-node-label');
+    const boundary = hasAttribute(match[1], 'data-boundary-label');
+    const nodeOwner = [...groups].reverse().find((group) => group['data-node-id']);
+    const edgeOwner = [...groups].reverse().find((group) => group['data-edge-from'] && group['data-edge-to']);
+    const inLegend = legendStart >= 0 && match.index >= legendStart;
+    const owner = inLegend ? { kind: 'legend', id: null }
+      : boundary ? { kind: 'boundary', id: null }
+        : nodeOwner ? { kind: 'node', id: nodeOwner['data-node-id'] }
+          : edgeOwner ? { kind: 'edge', id: edgeOwner['data-edge-id'] || null, from: edgeOwner['data-edge-from'], to: edgeOwner['data-edge-to'] }
+            : { kind: 'canvas', id: null };
+    const role = primary || boundary ? 'primary' : 'secondary';
+    const sourceFontPx = Number.parseFloat(attrs['font-size'] || '');
+    const text = stripTags(match[2]).trim();
+    if (!text) continue;
+    entries.push({ owner, text, role, sourceFontPx });
+  }
+  const issues = [];
+  for (const entry of entries) {
+    const floor = profile.floors[entry.role];
+    const finalSize = Number.isFinite(entry.sourceFontPx) && Number.isFinite(scale) ? round(entry.sourceFontPx * scale) : Number.NaN;
+    if (!(finalSize >= floor)) issues.push({ ...entry, finalSize: Number.isFinite(finalSize) ? finalSize : null, floor });
+  }
+  const minimum = (role) => {
+    const sizes = entries.filter((entry) => entry.role === role && Number.isFinite(entry.sourceFontPx)).map((entry) => entry.sourceFontPx * scale);
+    return sizes.length ? round(Math.min(...sizes)) : null;
+  };
+  return {
+    issues,
+    evidence: {
+      medium: profile.medium,
+      unit: profile.unit,
+      frame: [profile.frame.width, profile.frame.height],
+      viewBox: [viewBoxWidth, viewBoxHeight],
+      scale: Number.isFinite(scale) ? Math.round(scale * 10000) / 10000 : null,
+      maxScale: profile.maxScale,
+      floors: profile.floors,
+      minimumPrimary: minimum('primary'),
+      minimumSecondary: minimum('secondary'),
+      textCount: entries.length,
+      belowFloor: issues.length,
+    },
+  };
 }
 
 function estimatedTextWidth(text, fontSize) {

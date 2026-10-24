@@ -53,6 +53,9 @@
           "$ref": "common.schema.json#/$defs/qualityProfile"
         },
         "parentHref": { "$ref": "common.schema.json#/$defs/parentHref" },
+        "output_profile": {
+          "$ref": "common.schema.json#/$defs/outputProfile"
+        },
         "repository": {
           "$ref": "common.schema.json#/$defs/repository"
         },
